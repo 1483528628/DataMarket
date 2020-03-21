@@ -4,6 +4,7 @@
     <option name="originalFiles">
       <list>
         <option value="$PROJECT_DIR$/client_demo/pom.xml" />
+        <option value="$PROJECT_DIR$/itcast_shop_parent/pom.xml" />
       </list>
     </option>
   </component>

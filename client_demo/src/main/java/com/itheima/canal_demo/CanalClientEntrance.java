@@ -33,8 +33,9 @@ public class CanalClientEntrance {
 
                 } else {
 //                    printSummary(message);
-                    String s = binlogToJson(message);
-                    System.out.println(s);
+//                    String s = binlogToJson(message);
+//                    System.out.println(s);
+                    binlogToProtobuf(message);
                 }
 //                确认指定的batchId已经消费成功
                 connector.ack(batchId);
@@ -45,6 +46,48 @@ public class CanalClientEntrance {
             connector.disconnect();
         }
 
+    }
+
+    private static byte[] binlogToProtobuf(Message message) throws InvalidProtocolBufferException {
+        CanalModel.RowData.Builder rowDataBuilder = CanalModel.RowData.newBuilder();
+        for (CanalEntry.Entry entry : message.getEntries()) {
+            if (entry.getEntryType() == CanalEntry.EntryType.TRANSACTIONBEGIN ||
+                    entry.getEntryType() == CanalEntry.EntryType.TRANSACTIONEND) {
+                continue;
+            }
+            // 获取binlog文件名
+            String logfileName = entry.getHeader().getLogfileName();
+            // 获取logfile的偏移量
+            long logfileOffset = entry.getHeader().getLogfileOffset();
+            // 获取sql语句执行时间戳
+            long executeTime = entry.getHeader().getExecuteTime();
+            // 获取数据库名
+            String schemaName = entry.getHeader().getSchemaName();
+            // 获取表名
+            String tableName = entry.getHeader().getTableName();
+            // 获取事件类型 insert/update/delete
+            String eventType = entry.getHeader().getEventType().toString().toLowerCase();
+
+            rowDataBuilder.setLogfilename(logfileName);
+            rowDataBuilder.setLogfileoffset(logfileOffset);
+            rowDataBuilder.setExecuteTime(executeTime);
+            rowDataBuilder.setSchemaName(schemaName);
+            rowDataBuilder.setTableName(tableName);
+            rowDataBuilder.setEventType(eventType);
+            CanalEntry.RowChange rowChange = CanalEntry.RowChange.parseFrom(entry.getStoreValue());
+            for (CanalEntry.RowData rowData : rowChange.getRowDatasList()) {
+                if (eventType.equals("insert") || eventType.equals("update")) {
+                    for (CanalEntry.Column column : rowData.getAfterColumnsList()) {
+                        rowDataBuilder.putColumns(column.getName(), column.getValue().toString());
+                    }
+                } else if (eventType.equals("delete")) {
+                    for (CanalEntry.Column column : rowData.getBeforeColumnsList()) {
+                        rowDataBuilder.putColumns(column.getName(), column.getValue().toString());
+                    }
+                }
+            }
+        }
+        return rowDataBuilder.build().toByteArray();
     }
 
     private static String binlogToJson(Message message) throws InvalidProtocolBufferException {
